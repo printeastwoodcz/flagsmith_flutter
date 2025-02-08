@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:collection/collection.dart' show IterableExtension;
+import 'package:dio/dio.dart';
 import 'package:flutter_client_sse/constants/sse_request_type_enum.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:rxdart/subjects.dart';
-import 'package:dio/dio.dart';
 
 import '../flagsmith.dart';
 
@@ -35,10 +36,10 @@ class FlagsmithClient {
   late StorageProvider storageProvider;
   CoreStorage? storage;
   late Dio _api;
-  final Set<Flag> _flags = {};
+  final Map<String, Flag> _flags = {};
   final List<Flag> seeds;
 
-  Set<Flag> get cachedFlags => _flags;
+  Map<String, Flag> get cachedFlags => _flags;
 
   //A map of flag names to the amount of times they have been evaluated in the last 10 seconds
   final Map<String, int> flagAnalytics = {};
@@ -290,9 +291,8 @@ class FlagsmithClient {
       throw FlagsmithConfigException(Exception('caches are NOT enabled!'));
     }
 
-    var feature = _flags.firstWhereOrNull((element) =>
-        element.feature.name == featureName && element.enabled == true);
-    return feature != null;
+    final feature = cachedFlags[featureName];
+    return feature?.enabled == true;
   }
 
   /// Check if Feature flag exist and is enabled
@@ -336,8 +336,7 @@ class FlagsmithClient {
       log('Exception: caches are NOT enabled!');
       throw FlagsmithConfigException(Exception('caches are NOT enabled!'));
     }
-    var feature = cachedFlags
-        .firstWhereOrNull((element) => element.feature.name == featureId);
+    final feature = cachedFlags[featureId];
     _incrementFlagAnalytics(feature);
     return feature?.stateValue;
   }
@@ -357,7 +356,7 @@ class FlagsmithClient {
   Future<bool> removeFeatureFlag(String featureName) async {
     var result = await storageProvider.delete(featureName);
     if (config.caches) {
-      _flags.removeWhere((element) => element.feature.name == featureName);
+      _flags.removeWhere((key, _) => key == featureName);
     }
     return result;
   }
@@ -539,11 +538,17 @@ class FlagsmithClient {
 
   /// Internal updadte caches from list of featurs
   void _updateCaches({List<Flag> list = const <Flag>[]}) {
-    if (config.caches) {
-      _flags
-        ..clear()
-        ..addAll(list.toSet());
+    if (!config.caches) {
+      return;
     }
+    final newData = <String, Flag>{};
+    for (var element in list) {
+      newData[element.feature.name] = element;
+    }
+
+    _flags
+      ..clear()
+      ..addAll(newData);
   }
 
   /// clear all data from storage
@@ -575,9 +580,9 @@ class FlagsmithClient {
     final result = await storageProvider.togggleFeature(featureName);
     final value = await storageProvider.read(featureName);
     if (config.caches) {
-      _flags.removeWhere((element) => element.feature.name == featureName);
+      _flags.removeWhere((key, _) => key == featureName);
       if (value != null) {
-        _flags.add(value);
+        _flags[value.feature.name] = value;
       }
     }
     return result;
