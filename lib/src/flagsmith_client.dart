@@ -166,7 +166,10 @@ class FlagsmithClient {
     } else {
       switch (config.storageType) {
         case StorageType.custom:
-          store = storage!;
+          if (storage == null) {
+            throw FlagsmithConfigException(Exception('When using StorageType.custom, a storage implementation must be provided'));
+          }
+          store = storage;
           break;
         default:
           store = InMemoryStorage();
@@ -181,7 +184,6 @@ class FlagsmithClient {
   ///
   ///
   Future<void> initialize() async {
-    storageProvider = prepareStorage(storage: storage, config: config);
     await initStore(seeds: seeds);
   }
 
@@ -198,7 +200,8 @@ class FlagsmithClient {
       config: config,
       apiKey: apiKey,
       seeds: seeds,
-    )..storageProvider = prepareStorage(storage: storage, config: config);
+      storage: storage,
+    );
     await client.initStore(seeds: seeds);
     return client;
   }
